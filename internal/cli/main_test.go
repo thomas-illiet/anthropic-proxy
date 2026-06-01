@@ -45,13 +45,13 @@ func TestRootShowsHelp(t *testing.T) {
 	}
 }
 
-// TestServeRejectsConfigFlag verifies the removed --config flag is no longer accepted.
-func TestServeRejectsConfigFlag(t *testing.T) {
+// TestServeRejectsUnknownFlag verifies serve accepts no runtime config flags.
+func TestServeRejectsUnknownFlag(t *testing.T) {
 	cmd := newRootCommand()
-	cmd.SetArgs([]string{"serve", "--config", "a.env"})
+	cmd.SetArgs([]string{"serve", "--unknown"})
 
-	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "unknown flag: --config") {
-		t.Fatalf("expected unknown --config flag error, got %v", err)
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "unknown flag: --unknown") {
+		t.Fatalf("expected unknown flag error, got %v", err)
 	}
 }
 

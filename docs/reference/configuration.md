@@ -5,7 +5,7 @@
 1. Real environment variables named `ANTHROPIC_PROXY_*`.
 2. An optional `.env` file in the current working directory.
 
-Real environment variables override `.env`. Old unprefixed names are ignored. There is no `--config` flag and no positional config file argument.
+Real environment variables override `.env`. Old unprefixed names are ignored. No external config file path is read.
 
 ## Required Minimum
 

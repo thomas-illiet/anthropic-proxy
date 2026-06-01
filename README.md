@@ -42,7 +42,7 @@ anthropic-proxy --help
 
 The root command only prints help. The server starts only through `anthropic-proxy serve`.
 
-Configuration is loaded once at startup from real `ANTHROPIC_PROXY_*` environment variables and an optional `.env` file in the current working directory. There is no `--config` flag and no config file argument.
+Configuration is loaded once at startup from real `ANTHROPIC_PROXY_*` environment variables and an optional `.env` file in the current working directory.
 
 ## Documentation
 
@@ -51,4 +51,3 @@ Configuration is loaded once at startup from real `ANTHROPIC_PROXY_*` environmen
 - [Configuration Reference](docs/reference/configuration.md)
 - [API Reference](docs/reference/api.md)
 - [Architecture](docs/architecture.md)
-- [Changelog](CHANGELOG.md)
