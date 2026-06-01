@@ -1,0 +1,20 @@
+<svg width="1280" height="360" viewBox="0 0 1280 360" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">anthropic-proxy</title>
+  <desc id="desc">Anthropic-compatible API proxy to OpenAI-compatible upstreams.</desc>
+  <rect width="1280" height="360" rx="0" fill="#EEF6F7"/>
+  <rect x="56" y="56" width="1168" height="248" rx="18" fill="#FFFFFF" stroke="#C7D7DD" stroke-width="2"/>
+  <path d="M88 264 C210 188 298 292 420 214 C532 142 620 238 724 176 C842 104 958 144 1192 104" stroke="#14B8A6" stroke-width="6" stroke-linecap="round" opacity="0.22"/>
+  <path d="M88 286 C220 226 324 304 452 244 C580 184 706 268 826 208 C938 154 1038 178 1192 150" stroke="#F59E0B" stroke-width="4" stroke-linecap="round" opacity="0.28"/>
+  <g font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif">
+    <text x="96" y="142" fill="#102027" font-size="58" font-weight="800" letter-spacing="0">anthropic-proxy</text>
+    <text x="100" y="188" fill="#475569" font-size="24" font-weight="500">Anthropic-compatible requests. OpenAI-compatible upstreams.</text>
+    <g transform="translate(100 222)">
+      <rect x="0" y="0" width="160" height="42" rx="8" fill="#E7F8F5" stroke="#99D8CF"/>
+      <text x="18" y="28" fill="#0F3B3A" font-size="18" font-weight="700">/v1/messages</text>
+      <path d="M184 21 H250" stroke="#334155" stroke-width="3" stroke-linecap="round"/>
+      <path d="M240 11 L252 21 L240 31" stroke="#334155" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      <rect x="276" y="0" width="244" height="42" rx="8" fill="#FFF7E6" stroke="#F4C567"/>
+      <text x="294" y="28" fill="#422A04" font-size="18" font-weight="700">/v1/chat/completions</text>
+    </g>
+  </g>
+</svg>

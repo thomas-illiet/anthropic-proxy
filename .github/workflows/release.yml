@@ -1,0 +1,139 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  release:
+    name: Build image and create release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Check formatting
+        run: make fmt-check
+
+      - name: Vet
+        run: make vet
+
+      - name: Test
+        run: make test
+
+      - name: Race test internals
+        run: go test -race ./internal/...
+
+      - name: Validate Compose file
+        run: docker compose config --quiet
+
+      - name: Build binary
+        run: make build
+
+      - name: Extract release metadata
+        id: release
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          SHORT_SHA="${GITHUB_SHA::7}"
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "short_sha=${SHORT_SHA}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build release archives
+        run: make dist VERSION="${{ steps.release.outputs.version }}"
+
+      - name: Verify release archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.release.outputs.version }}"
+          DIST_DIR="dist/release"
+
+          verify_tar() {
+            local goos="$1"
+            local goarch="$2"
+            local archive="${DIST_DIR}/anthropic-proxy_${VERSION}_${goos}_${goarch}.tar.gz"
+            local root="anthropic-proxy_${VERSION}_${goos}_${goarch}"
+            test -s "${archive}"
+            tar -tzf "${archive}" | grep -Fx "${root}/anthropic-proxy"
+            tar -tzf "${archive}" | grep -Fx "${root}/.env.example"
+            tar -tzf "${archive}" | grep -Fx "${root}/README.txt"
+          }
+
+          verify_zip() {
+            local goos="$1"
+            local goarch="$2"
+            local archive="${DIST_DIR}/anthropic-proxy_${VERSION}_${goos}_${goarch}.zip"
+            local root="anthropic-proxy_${VERSION}_${goos}_${goarch}"
+            test -s "${archive}"
+            unzip -Z1 "${archive}" | grep -Fx "${root}/anthropic-proxy.exe"
+            unzip -Z1 "${archive}" | grep -Fx "${root}/.env.example"
+            unzip -Z1 "${archive}" | grep -Fx "${root}/README.txt"
+          }
+
+          verify_tar linux amd64
+          verify_tar linux arm64
+          verify_tar darwin amd64
+          verify_tar darwin arm64
+          verify_zip windows amd64
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          build-args: |
+            VERSION=${{ steps.release.outputs.version }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.release.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.release.outputs.short_sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ github.ref_name }}
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          gh release create "${TAG_NAME}" \
+            "dist/release/anthropic-proxy_${VERSION}_linux_amd64.tar.gz" \
+            "dist/release/anthropic-proxy_${VERSION}_linux_arm64.tar.gz" \
+            "dist/release/anthropic-proxy_${VERSION}_darwin_amd64.tar.gz" \
+            "dist/release/anthropic-proxy_${VERSION}_darwin_arm64.tar.gz" \
+            "dist/release/anthropic-proxy_${VERSION}_windows_amd64.zip" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "${TAG_NAME}" \
+            --generate-notes
