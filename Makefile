@@ -31,6 +31,10 @@ fmt:
 fmt-check:
 	@test -z "$$(gofmt -l .)" || (gofmt -l . && exit 1)
 
+.PHONY: dist
+dist:
+	bash scripts/build-dist.sh "$(VERSION)" "$(LDFLAGS)" "$(CMD)" "$(BINARY)"
+
 .PHONY: clean
 clean:
 	rm -rf $(BINARY) dist
