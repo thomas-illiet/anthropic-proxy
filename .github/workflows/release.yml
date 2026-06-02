@@ -29,20 +29,11 @@ jobs:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
-      - name: Check formatting
-        run: make fmt-check
+      - name: Validate Go quality gates
+        run: make check
 
-      - name: Vet
-        run: make vet
-
-      - name: Test
-        run: make test
-
-      - name: Race test internals
-        run: go test -race ./internal/...
-
-      - name: Validate Compose file
-        run: docker compose config --quiet
+      - name: Validate Docker
+        run: make docker-check
 
       - name: Build binary
         run: make build
@@ -60,39 +51,7 @@ jobs:
         run: make dist VERSION="${{ steps.release.outputs.version }}"
 
       - name: Verify release archives
-        shell: bash
-        run: |
-          set -euo pipefail
-          VERSION="${{ steps.release.outputs.version }}"
-          DIST_DIR="dist/release"
-
-          verify_tar() {
-            local goos="$1"
-            local goarch="$2"
-            local archive="${DIST_DIR}/anthropic-proxy_${VERSION}_${goos}_${goarch}.tar.gz"
-            local root="anthropic-proxy_${VERSION}_${goos}_${goarch}"
-            test -s "${archive}"
-            tar -tzf "${archive}" | grep -Fx "${root}/anthropic-proxy"
-            tar -tzf "${archive}" | grep -Fx "${root}/.env.example"
-            tar -tzf "${archive}" | grep -Fx "${root}/README.txt"
-          }
-
-          verify_zip() {
-            local goos="$1"
-            local goarch="$2"
-            local archive="${DIST_DIR}/anthropic-proxy_${VERSION}_${goos}_${goarch}.zip"
-            local root="anthropic-proxy_${VERSION}_${goos}_${goarch}"
-            test -s "${archive}"
-            unzip -Z1 "${archive}" | grep -Fx "${root}/anthropic-proxy.exe"
-            unzip -Z1 "${archive}" | grep -Fx "${root}/.env.example"
-            unzip -Z1 "${archive}" | grep -Fx "${root}/README.txt"
-          }
-
-          verify_tar linux amd64
-          verify_tar linux arm64
-          verify_tar darwin amd64
-          verify_tar darwin arm64
-          verify_zip windows amd64
+        run: bash scripts/verify-dist.sh "${{ steps.release.outputs.version }}"
 
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -112,6 +71,8 @@ jobs:
           push: true
           build-args: |
             VERSION=${{ steps.release.outputs.version }}
+            SOURCE=https://github.com/${{ github.repository }}
+            REVISION=${{ github.sha }}
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.release.outputs.version }}
@@ -134,6 +95,7 @@ jobs:
             "dist/release/anthropic-proxy_${VERSION}_darwin_amd64.tar.gz" \
             "dist/release/anthropic-proxy_${VERSION}_darwin_arm64.tar.gz" \
             "dist/release/anthropic-proxy_${VERSION}_windows_amd64.zip" \
+            "dist/release/SHA256SUMS" \
             --repo "${GITHUB_REPOSITORY}" \
             --title "${TAG_NAME}" \
             --generate-notes

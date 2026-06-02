@@ -110,6 +110,99 @@ func TestAuth(t *testing.T) {
 	}
 }
 
+// TestProtectedEndpointsRequireAuth verifies all protected API endpoints enforce the client key.
+func TestProtectedEndpointsRequireAuth(t *testing.T) {
+	upstreamHit := false
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamHit = true
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(upstream.URL)
+	cfg.ExpectedClientKey = "secret"
+	server := httptest.NewServer(New(cfg).Routes())
+	defer server.Close()
+
+	for _, tc := range []struct {
+		name   string
+		method string
+		path   string
+		body   string
+	}{
+		{name: "messages", method: http.MethodPost, path: "/v1/messages", body: `{}`},
+		{name: "count tokens", method: http.MethodPost, path: "/v1/messages/count_tokens", body: `{}`},
+		{name: "models", method: http.MethodGet, path: "/v1/models"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := http.NewRequest(tc.method, server.URL+tc.path, strings.NewReader(tc.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.body != "" {
+				req.Header.Set("content-type", "application/json")
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusUnauthorized {
+				body, _ := io.ReadAll(resp.Body)
+				t.Fatalf("status = %d body = %s", resp.StatusCode, body)
+			}
+		})
+	}
+	if upstreamHit {
+		t.Fatal("upstream should not be called for unauthorized requests")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/v1/models", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("x-api-key", "secret")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("x-api-key status = %d body = %s", resp.StatusCode, body)
+	}
+}
+
+// TestRootDiagnosticsOmitSecrets verifies public diagnostics never expose credentials.
+func TestRootDiagnosticsOmitSecrets(t *testing.T) {
+	cfg := testConfig("http://127.0.0.1:1/v1/chat/completions")
+	cfg.UpstreamKey = "upstream-secret"
+	cfg.ExpectedClientKey = "client-secret"
+	server := httptest.NewServer(New(cfg).Routes())
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body = %s", resp.StatusCode, body)
+	}
+	if strings.Contains(string(body), cfg.UpstreamKey) || strings.Contains(string(body), cfg.ExpectedClientKey) {
+		t.Fatalf("root diagnostics leaked secret: %s", body)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"upstream_key", "expected_client_key", "client_key"} {
+		if _, ok := out[forbidden]; ok {
+			t.Fatalf("root diagnostics exposed %q: %#v", forbidden, out)
+		}
+	}
+}
+
 // TestMetricsEndpointUnprotected verifies Prometheus metrics are scrapeable even when API auth is enabled.
 func TestMetricsEndpointUnprotected(t *testing.T) {
 	cfg := testConfig("http://127.0.0.1:1/v1/chat/completions")
@@ -512,6 +605,86 @@ func TestStreamProxy(t *testing.T) {
 	}
 }
 
+// TestStreamProxySkipsMalformedSSE verifies one bad upstream chunk does not poison the stream.
+func TestStreamProxySkipsMalformedSSE(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {bad json\n\n")
+		writeSSEChunk(t, w, map[string]any{"choices": []any{map[string]any{
+			"index":         0,
+			"delta":         map[string]any{"content": "ok"},
+			"finish_reason": "stop",
+		}}, "usage": map[string]any{"prompt_tokens": 4, "completion_tokens": 1, "total_tokens": 5}})
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer upstream.Close()
+
+	server := httptest.NewServer(New(testConfig(upstream.URL)).Routes())
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/v1/messages", "application/json", strings.NewReader(`{
+		"model":"claude-sonnet",
+		"max_tokens":32,
+		"stream":true,
+		"messages":[{"role":"user","content":"hi"}]
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body = %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), `"text":"ok"`) || !strings.Contains(string(body), "event: message_stop") {
+		t.Fatalf("stream did not recover after malformed chunk:\n%s", body)
+	}
+}
+
+// TestNativeStreamEmitsThinking verifies reasoning deltas become Anthropic thinking blocks.
+func TestNativeStreamEmitsThinking(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		writeSSEChunk(t, w, map[string]any{"choices": []any{map[string]any{
+			"index": 0,
+			"delta": map[string]any{"reasoning_content": "think"},
+		}}})
+		writeSSEChunk(t, w, map[string]any{"choices": []any{map[string]any{
+			"index":         0,
+			"delta":         map[string]any{"content": "ok"},
+			"finish_reason": "stop",
+		}}, "usage": map[string]any{"prompt_tokens": 4, "completion_tokens": 1, "total_tokens": 5}})
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(upstream.URL)
+	cfg.ToolFormat = config.ToolFormatNative
+	server := httptest.NewServer(New(cfg).Routes())
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/v1/messages", "application/json", strings.NewReader(`{
+		"model":"claude-sonnet",
+		"max_tokens":32,
+		"stream":true,
+		"messages":[{"role":"user","content":"hi"}]
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body = %s", resp.StatusCode, body)
+	}
+	got := string(body)
+	for _, want := range []string{`"type":"thinking"`, `"type":"thinking_delta"`, `"thinking":"think"`, `"text":"ok"`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("native stream missing %q:\n%s", want, got)
+		}
+	}
+}
+
 // TestStreamProxyMetrics verifies successful streaming messages record usage from final SSE chunks.
 func TestStreamProxyMetrics(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -718,6 +891,42 @@ func TestXMLStreamProxyParsesToolCalls(t *testing.T) {
 	}
 }
 
+// TestXMLStreamInvalidToolArgsFallBackToEmptyObject verifies malformed XML tool JSON is safe.
+func TestXMLStreamInvalidToolArgsFallBackToEmptyObject(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		writeSSEChunk(t, w, map[string]any{"choices": []any{map[string]any{
+			"index":         0,
+			"delta":         map[string]any{"content": `<tool_code name="lookup">not json</tool_code>`},
+			"finish_reason": "stop",
+		}}, "usage": map[string]any{"prompt_tokens": 8, "completion_tokens": 3, "total_tokens": 11}})
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer upstream.Close()
+
+	server := httptest.NewServer(New(testConfig(upstream.URL)).Routes())
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/v1/messages", "application/json", strings.NewReader(`{
+		"model":"claude-sonnet",
+		"max_tokens":32,
+		"stream":true,
+		"tools":[{"name":"lookup","input_schema":{"type":"object"}}],
+		"messages":[{"role":"user","content":"hi"}]
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body = %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), `"partial_json":"{}"`) || !strings.Contains(string(body), `"stop_reason":"tool_use"`) {
+		t.Fatalf("invalid XML args were not sanitized:\n%s", body)
+	}
+}
+
 // TestBodyLimit verifies oversized requests are rejected before hitting upstream.
 func TestBodyLimit(t *testing.T) {
 	upstreamHit := false
@@ -746,6 +955,24 @@ func TestBodyLimit(t *testing.T) {
 	}
 }
 
+// TestCountTokensBodyLimit verifies token-count requests share the configured body limit.
+func TestCountTokensBodyLimit(t *testing.T) {
+	cfg := testConfig("http://127.0.0.1:1/v1/chat/completions")
+	cfg.MaxRequestBody = 16
+	server := httptest.NewServer(New(cfg).Routes())
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/v1/messages/count_tokens", "application/json", strings.NewReader(strings.Repeat("x", 17)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusRequestEntityTooLarge {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d body = %s", resp.StatusCode, body)
+	}
+}
+
 // TestUpstreamError verifies upstream errors are mapped into Anthropic-style errors.
 func TestUpstreamError(t *testing.T) {
 	// The upstream handler returns an OpenAI-style error body.
@@ -771,6 +998,64 @@ func TestUpstreamError(t *testing.T) {
 	}
 	body, _ := io.ReadAll(resp.Body)
 	if !strings.Contains(string(body), "rate_limit_error") || !strings.Contains(string(body), "slow down") {
+		t.Fatalf("unexpected body = %s", body)
+	}
+}
+
+// TestUpstreamInvalidJSON verifies bad successful upstream bodies become gateway errors.
+func TestUpstreamInvalidJSON(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{bad json`))
+	}))
+	defer upstream.Close()
+
+	server := httptest.NewServer(New(testConfig(upstream.URL)).Routes())
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/v1/messages", "application/json", strings.NewReader(`{
+		"model":"claude-sonnet",
+		"max_tokens":32,
+		"messages":[{"role":"user","content":"hi"}]
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("status = %d body = %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), "decode:") || !strings.Contains(string(body), "api_error") {
+		t.Fatalf("unexpected body = %s", body)
+	}
+}
+
+// TestStreamUpstreamError verifies streaming upstream HTTP failures are mapped before SSE starts.
+func TestStreamUpstreamError(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"error":{"message":"upstream down"}}`, http.StatusServiceUnavailable)
+	}))
+	defer upstream.Close()
+
+	server := httptest.NewServer(New(testConfig(upstream.URL)).Routes())
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/v1/messages", "application/json", strings.NewReader(`{
+		"model":"claude-sonnet",
+		"max_tokens":32,
+		"stream":true,
+		"messages":[{"role":"user","content":"hi"}]
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d body = %s", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), "api_error") || !strings.Contains(string(body), "upstream down") {
 		t.Fatalf("unexpected body = %s", body)
 	}
 }

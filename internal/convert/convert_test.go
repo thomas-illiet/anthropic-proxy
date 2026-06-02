@@ -2,6 +2,7 @@ package convert
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -201,6 +202,80 @@ func TestToOpenAIForwardsCacheControlWhenEnabled(t *testing.T) {
 	}
 }
 
+// TestToOpenAIConvertsDocumentURLImageAndFallbackContent verifies native structured user blocks.
+func TestToOpenAIConvertsDocumentURLImageAndFallbackContent(t *testing.T) {
+	cfg := &config.Config{DefaultModel: "upstream-model", ForceModel: true, ToolFormat: config.ToolFormatNative}
+	req := &anthropic.Request{
+		Model: "claude",
+		Messages: []anthropic.Message{{
+			Role: "user",
+			Content: json.RawMessage(`[
+				{"type":"text","text":"before"},
+				{"type":"image","source":{"type":"url","url":"https://example.test/image.png"}},
+				{"type":"document","title":"remote-notes","source":{"type":"url","url":"https://example.test/notes.txt"}},
+				{"type":"search_result","content":"fallback text"}
+			]`),
+		}},
+	}
+
+	got, err := ToOpenAI(req, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Messages) != 1 {
+		t.Fatalf("messages = %+v", got.Messages)
+	}
+	var parts []map[string]any
+	if err := json.Unmarshal(got.Messages[0].Content, &parts); err != nil {
+		t.Fatal(err)
+	}
+	if len(parts) != 4 {
+		t.Fatalf("parts = %#v", parts)
+	}
+	if parts[1]["type"] != "image_url" || !strings.Contains(fmt.Sprint(parts[1]["image_url"]), "https://example.test/image.png") {
+		t.Fatalf("image part = %#v", parts[1])
+	}
+	if !strings.Contains(fmt.Sprint(parts[2]["text"]), "[Document: remote-notes]") || !strings.Contains(fmt.Sprint(parts[2]["text"]), "https://example.test/notes.txt") {
+		t.Fatalf("document part = %#v", parts[2])
+	}
+	if fmt.Sprint(parts[3]["text"]) != "fallback text" {
+		t.Fatalf("fallback part = %#v", parts[3])
+	}
+}
+
+// TestNativeToolChoiceVariants verifies Anthropic tool choices map to OpenAI-compatible values.
+func TestNativeToolChoiceVariants(t *testing.T) {
+	tests := []struct {
+		name   string
+		choice *anthropic.ToolChoice
+		want   string
+	}{
+		{name: "nil", choice: nil, want: ""},
+		{name: "auto", choice: &anthropic.ToolChoice{Type: "auto"}, want: `"auto"`},
+		{name: "any", choice: &anthropic.ToolChoice{Type: "any"}, want: `"required"`},
+		{name: "none", choice: &anthropic.ToolChoice{Type: "none"}, want: `"none"`},
+		{name: "unknown", choice: &anthropic.ToolChoice{Type: "unknown"}, want: ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := string(nativeToolChoice(tc.choice)); got != tc.want {
+				t.Fatalf("nativeToolChoice = %s, want %s", got, tc.want)
+			}
+		})
+	}
+
+	var toolChoice struct {
+		Type     string            `json:"type"`
+		Function map[string]string `json:"function"`
+	}
+	if err := json.Unmarshal(nativeToolChoice(&anthropic.ToolChoice{Type: "tool", Name: "lookup"}), &toolChoice); err != nil {
+		t.Fatal(err)
+	}
+	if toolChoice.Type != "function" || toolChoice.Function["name"] != "lookup" {
+		t.Fatalf("tool choice = %+v", toolChoice)
+	}
+}
+
 // TestToOpenAIXMLToolFallback verifies Claude Adapter-style XML tool fallback conversion.
 func TestToOpenAIXMLToolFallback(t *testing.T) {
 	temp := 0.8
@@ -337,6 +412,38 @@ func TestFromOpenAIConvertsResponse(t *testing.T) {
 	}
 	if len(resp.Content) != 2 || resp.Content[0].Text != "hello" || resp.Content[1].Name != "lookup" {
 		t.Fatalf("content = %+v", resp.Content)
+	}
+}
+
+// TestFromOpenAIConvertsThinkingAndInvalidToolArgs verifies reasoning and invalid arguments are safe.
+func TestFromOpenAIConvertsThinkingAndInvalidToolArgs(t *testing.T) {
+	resp := FromOpenAI(&OpenAIResponse{
+		ID: "chatcmpl-reasoning",
+		Choices: []OpenAIChoice{{
+			Message: OpenAIMessage{
+				ReasoningContent: "private chain",
+				Content:          json.RawMessage(`"visible"`),
+				ToolCalls: []OpenAIToolCall{{
+					ID:   "call_bad",
+					Type: "function",
+					Function: OpenAIFunctionCall{
+						Name:      "lookup",
+						Arguments: `{bad json`,
+					},
+				}},
+			},
+			FinishReason: "tool_calls",
+		}},
+	}, "claude")
+
+	if len(resp.Content) != 3 || resp.Content[0].Type != "thinking" || resp.Content[0].Thinking != "private chain" {
+		t.Fatalf("thinking content = %+v", resp.Content)
+	}
+	if resp.Content[1].Text != "visible" || resp.Content[2].Name != "lookup" || string(resp.Content[2].Input) != `{}` {
+		t.Fatalf("converted content = %+v", resp.Content)
+	}
+	if resp.StopReason != "tool_use" {
+		t.Fatalf("stop reason = %q", resp.StopReason)
 	}
 }
 

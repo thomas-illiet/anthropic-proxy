@@ -8,8 +8,11 @@ docs/.DS_Store
 !.env.example
 
 anthropic-proxy
+anthropic-proxy.exe
 dist/
 tmp/
+coverage.out
 coverage/
+*.exe
 *.log
 *.test

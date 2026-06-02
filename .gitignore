@@ -1,7 +1,16 @@
 .DS_Store
+
 .env
-dist/
+.env.*
+!.env.example
+
 /anthropic-proxy
 /anthropic-proxy.exe
 *.exe
+*.test
 *.log
+
+coverage.out
+coverage/
+dist/
+tmp/

@@ -53,8 +53,20 @@ build_package() {
 	fi
 }
 
+write_checksums() {
+	(
+		cd "${dist_dir}"
+		if command -v sha256sum >/dev/null 2>&1; then
+			sha256sum ./*.{tar.gz,zip} > SHA256SUMS
+		else
+			shasum -a 256 ./*.{tar.gz,zip} > SHA256SUMS
+		fi
+	)
+}
+
 build_package linux amd64
 build_package linux arm64
 build_package darwin amd64
 build_package darwin arm64
 build_package windows amd64
+write_checksums

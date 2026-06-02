@@ -12,6 +12,9 @@ var codecCache sync.Map
 
 // CountOpenAITokens estimates tokens for the OpenAI-compatible request sent upstream.
 func CountOpenAITokens(req *OpenAIRequest) int {
+	if req == nil {
+		return 0
+	}
 	codec := codecForModel(req.Model)
 	count := 0
 
@@ -67,7 +70,7 @@ func codecForModel(model string) tokenizer.Codec {
 	}
 	codec, err := tokenizer.Get(tokenizer.Cl100kBase)
 	if err != nil {
-		panic(err)
+		return nil
 	}
 	codecCache.Store(fallback, codec)
 	return codec
@@ -126,6 +129,9 @@ func countJSON(codec tokenizer.Codec, v any) int {
 func countText(codec tokenizer.Codec, text string) int {
 	if text == "" {
 		return 0
+	}
+	if codec == nil {
+		return len([]rune(text))
 	}
 	n, err := codec.Count(text)
 	if err != nil {

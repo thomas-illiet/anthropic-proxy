@@ -48,3 +48,13 @@ func TestCountOpenAITokensFallsBackForUnknownModels(t *testing.T) {
 		t.Fatalf("count = %d", got)
 	}
 }
+
+// TestCountOpenAITokensNilAndCodecFallback verifies token estimates never panic on missing inputs.
+func TestCountOpenAITokensNilAndCodecFallback(t *testing.T) {
+	if got := CountOpenAITokens(nil); got != 0 {
+		t.Fatalf("nil request count = %d", got)
+	}
+	if got := countText(nil, "héllo"); got != 5 {
+		t.Fatalf("nil codec fallback = %d", got)
+	}
+}
