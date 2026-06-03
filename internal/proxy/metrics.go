@@ -92,11 +92,26 @@ func (p *Proxy) instrumentHTTP(endpoint string, next http.Handler) http.Handler 
 				p.metrics.httpRequests.WithLabelValues(endpoint, method, status).Inc()
 				p.metrics.httpDuration.WithLabelValues(endpoint, method, status).Observe(duration.Seconds())
 			}
-			p.logAccess(r, endpoint, method, statusCode, duration)
+			if shouldLogAccess(r.URL.Path, endpoint) {
+				p.logAccess(r, endpoint, method, statusCode, duration)
+			}
 		}()
 
 		next.ServeHTTP(rw, r)
 	})
+}
+
+func shouldLogAccess(path, endpoint string) bool {
+	switch endpoint {
+	case "/health", "/metrics":
+		return false
+	}
+	switch path {
+	case "/health", "/metric", "/metrics":
+		return false
+	default:
+		return true
+	}
 }
 
 // logAccess writes one structured access log record for a completed HTTP request.

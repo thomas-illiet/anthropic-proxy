@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 	"github.com/thomas-illiet/anthropic-proxy/internal/anthropic"
 	"github.com/thomas-illiet/anthropic-proxy/internal/config"
 	"github.com/thomas-illiet/anthropic-proxy/internal/convert"
+	"github.com/thomas-illiet/anthropic-proxy/internal/logging"
 )
 
 // testConfig returns a minimal proxy config suitable for HTTP handler tests.
@@ -224,6 +226,42 @@ func TestMetricsEndpointUnprotected(t *testing.T) {
 	}
 	if !strings.Contains(string(body), "anthropic_proxy_http_in_flight") {
 		t.Fatalf("metrics body missing proxy metric:\n%s", body)
+	}
+}
+
+// TestAccessLogSkipsHealthAndMetrics verifies high-frequency scrape endpoints stay out of access logs.
+func TestAccessLogSkipsHealthAndMetrics(t *testing.T) {
+	var buf bytes.Buffer
+	logger, err := logging.New(&buf, "info")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	server := httptest.NewServer(NewWithLogger(testConfig("http://127.0.0.1:1/v1/chat/completions"), logger).Routes())
+	defer server.Close()
+
+	for _, path := range []string{"/health", "/metrics", "/metric"} {
+		resp, err := http.Get(server.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+	}
+	if got := buf.String(); got != "" {
+		t.Fatalf("expected no access logs for health/metrics endpoints, got:\n%s", got)
+	}
+
+	resp, err := http.Get(server.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+
+	got := buf.String()
+	if !strings.Contains(got, `msg="http request"`) || !strings.Contains(got, "path=/") {
+		t.Fatalf("expected root access log, got:\n%s", got)
 	}
 }
 
