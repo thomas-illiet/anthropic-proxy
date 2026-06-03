@@ -10,18 +10,18 @@ Real environment variables override `.env`. Old unprefixed names are ignored. No
 ## Required Minimum
 
 ```bash
-ANTHROPIC_PROXY_UPSTREAM_API_KEY=replace-with-your-key
 ANTHROPIC_PROXY_DEFAULT_MODEL=your-upstream-model
 ```
 
 `ANTHROPIC_PROXY_DEFAULT_MODEL` is required when `ANTHROPIC_PROXY_FORCE_MODEL=1`, which is the default.
+`ANTHROPIC_PROXY_UPSTREAM_API_KEY` is optional and is only sent when configured.
 
 ## Variables
 
 | Variable | Required | Default | Description |
 |---|---:|---|---|
 | `ANTHROPIC_PROXY_UPSTREAM_URL` | no | `https://api.openai.com/v1/chat/completions` | OpenAI-compatible chat completions endpoint. |
-| `ANTHROPIC_PROXY_UPSTREAM_API_KEY` | yes | none | Bearer token sent to the upstream provider. |
+| `ANTHROPIC_PROXY_UPSTREAM_API_KEY` | no | unset | Optional bearer token sent to the upstream provider. |
 | `ANTHROPIC_PROXY_DEFAULT_MODEL` | conditional | none | Upstream model used when forcing all requests to one model. |
 | `ANTHROPIC_PROXY_TOOL_FORMAT` | no | `xml` | `xml` for prompt/XML tool fallback, `native` for OpenAI-compatible tools. |
 | `ANTHROPIC_PROXY_FORCE_MODEL` | no | `1` | Force every incoming model to `ANTHROPIC_PROXY_DEFAULT_MODEL`. |

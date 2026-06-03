@@ -22,7 +22,7 @@ If `ANTHROPIC_PROXY_CLIENT_KEY` is configured, `ANTHROPIC_API_KEY` must match th
 
 ## Upstream Authentication Fails
 
-Check `.env` in the directory where you start the proxy:
+For providers that require authentication, check `.env` in the directory where you start the proxy:
 
 ```bash
 ANTHROPIC_PROXY_UPSTREAM_API_KEY=replace-with-your-key

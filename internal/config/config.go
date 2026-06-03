@@ -185,10 +185,6 @@ func load(v *viper.Viper) (*Config, error) {
 	if cfg.RequestTimeout <= 0 {
 		cfg.RequestTimeout = 10 * time.Minute
 	}
-	if cfg.UpstreamKey == "" {
-		return nil, fmt.Errorf("%s is required", envUpstreamAPIKey)
-	}
-
 	if raw := v.GetString(envModelMap); raw != "" {
 		m := map[string]string{}
 		if err := json.Unmarshal([]byte(raw), &m); err != nil {

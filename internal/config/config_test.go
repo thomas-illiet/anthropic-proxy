@@ -132,14 +132,13 @@ func TestLoadDotEnvRejectsInvalidLines(t *testing.T) {
 func TestLoadWithoutDotEnv(t *testing.T) {
 	clearConfigEnv(t)
 	t.Chdir(t.TempDir())
-	t.Setenv(envUpstreamAPIKey, "env-key")
 	t.Setenv(envDefaultModel, "env-model")
 
 	cfg, err := Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.UpstreamKey != "env-key" || cfg.DefaultModel != "env-model" {
+	if cfg.UpstreamKey != "" || cfg.DefaultModel != "env-model" {
 		t.Fatalf("unexpected config: %+v", cfg)
 	}
 }
@@ -201,7 +200,7 @@ func TestLoadIgnoresLegacyEnvNames(t *testing.T) {
 		t.Setenv("DEFAULT_MODEL", "legacy-model")
 		t.Setenv("LOG_LEVEL", "debug")
 
-		if _, err := Load(); err == nil || !strings.Contains(err.Error(), envUpstreamAPIKey) {
+		if _, err := Load(); err == nil || !strings.Contains(err.Error(), envDefaultModel) {
 			t.Fatalf("legacy real env should be ignored, got err %v", err)
 		}
 	})
@@ -211,7 +210,7 @@ func TestLoadIgnoresLegacyEnvNames(t *testing.T) {
 		if _, err := loadFromValues(t, map[string]string{
 			"UPSTREAM_API_KEY": "legacy-key",
 			"DEFAULT_MODEL":    "legacy-model",
-		}); err == nil || !strings.Contains(err.Error(), envUpstreamAPIKey) {
+		}); err == nil || !strings.Contains(err.Error(), envDefaultModel) {
 			t.Fatalf("legacy dotenv keys should be ignored, got err %v", err)
 		}
 	})
@@ -353,10 +352,6 @@ func TestLoadValidation(t *testing.T) {
 		name string
 		env  map[string]string
 	}{
-		{
-			name: "missing upstream key",
-			env:  map[string]string{envDefaultModel: "model"},
-		},
 		{
 			name: "force model without default",
 			env:  map[string]string{envUpstreamAPIKey: "key", envForceModel: "1"},

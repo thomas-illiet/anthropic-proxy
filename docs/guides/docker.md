@@ -32,10 +32,11 @@ Inside Docker, `localhost` means the proxy container, not your host machine. For
 
 ```env
 ANTHROPIC_PROXY_UPSTREAM_URL=http://host.docker.internal:11434/v1/chat/completions
-ANTHROPIC_PROXY_UPSTREAM_API_KEY=ollama
 ANTHROPIC_PROXY_DEFAULT_MODEL=qwen3-coder:30b
 ANTHROPIC_PROXY_FORCE_MODEL=1
 ```
+
+Set `ANTHROPIC_PROXY_UPSTREAM_API_KEY` only if your local gateway requires one.
 
 The compose file includes `host.docker.internal:host-gateway` so this works on Linux as well as Docker Desktop.
 

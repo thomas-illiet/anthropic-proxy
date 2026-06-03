@@ -21,7 +21,7 @@ func (p *Proxy) openUpstreamStream(ctx context.Context, oreq *convert.OpenAIRequ
 		return nil, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+p.cfg.UpstreamKey)
+	setUpstreamAuthHeader(httpReq, p.cfg.UpstreamKey)
 	httpReq.Header.Set("Accept", "text/event-stream")
 	return p.client.Do(httpReq)
 }

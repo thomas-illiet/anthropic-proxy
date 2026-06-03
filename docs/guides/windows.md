@@ -7,7 +7,7 @@
 1. Download `anthropic-proxy_<version>_windows_amd64.zip` from [GitHub Releases](https://github.com/thomas-illiet/anthropic-proxy/releases/latest).
 2. Extract the archive.
 3. Copy `.env.example` to `.env`.
-4. Edit `.env` and set at least `ANTHROPIC_PROXY_UPSTREAM_API_KEY` and `ANTHROPIC_PROXY_DEFAULT_MODEL`.
+4. Edit `.env` and set `ANTHROPIC_PROXY_DEFAULT_MODEL`. Set `ANTHROPIC_PROXY_UPSTREAM_API_KEY` only if your upstream provider requires it.
 
 Start the proxy from PowerShell:
 

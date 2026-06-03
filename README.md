@@ -24,12 +24,13 @@ Use Claude Code with OpenAI-compatible model providers through an Anthropic-comp
 cp .env.example .env
 ```
 
-Edit `.env` and set at least:
+Edit `.env` and set the upstream model:
 
 ```bash
-ANTHROPIC_PROXY_UPSTREAM_API_KEY=replace-with-your-key
 ANTHROPIC_PROXY_DEFAULT_MODEL=your-upstream-model
 ```
+
+Set `ANTHROPIC_PROXY_UPSTREAM_API_KEY` only when your upstream provider requires a bearer token.
 
 Start the proxy:
 

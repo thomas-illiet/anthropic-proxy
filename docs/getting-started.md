@@ -31,12 +31,13 @@ Create `.env` in the directory where you run the binary:
 cp .env.example .env
 ```
 
-Edit at least:
+Edit the upstream model:
 
 ```bash
-ANTHROPIC_PROXY_UPSTREAM_API_KEY=replace-with-your-key
 ANTHROPIC_PROXY_DEFAULT_MODEL=your-upstream-model
 ```
+
+Set `ANTHROPIC_PROXY_UPSTREAM_API_KEY` only when your upstream provider requires a bearer token.
 
 Configuration precedence is:
 

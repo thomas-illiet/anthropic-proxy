@@ -418,6 +418,42 @@ func TestSyncProxy(t *testing.T) {
 	}
 }
 
+// TestSyncProxyOmitsAuthorizationWithoutUpstreamKey verifies unauthenticated upstreams are supported.
+func TestSyncProxyOmitsAuthorizationWithoutUpstreamKey(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := r.Header["Authorization"]; ok {
+			t.Fatalf("Authorization header should be omitted, got %q", r.Header.Get("Authorization"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"id":"chatcmpl-1",
+			"model":"upstream-model",
+			"choices":[{"index":0,"message":{"role":"assistant","content":"hello"},"finish_reason":"stop"}],
+			"usage":{"prompt_tokens":5,"completion_tokens":2,"total_tokens":7}
+		}`))
+	}))
+	defer upstream.Close()
+
+	cfg := testConfig(upstream.URL)
+	cfg.UpstreamKey = ""
+	server := httptest.NewServer(New(cfg).Routes())
+	defer server.Close()
+
+	resp, err := http.Post(server.URL+"/v1/messages", "application/json", strings.NewReader(`{
+		"model":"claude-sonnet",
+		"max_tokens":32,
+		"messages":[{"role":"user","content":"hi"}]
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d body = %s", resp.StatusCode, body)
+	}
+}
+
 // TestSyncProxyMetrics verifies successful sync messages record request and token KPIs.
 func TestSyncProxyMetrics(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

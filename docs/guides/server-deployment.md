@@ -8,7 +8,7 @@ Run `anthropic-proxy` behind your normal server boundary:
 
 - TLS and public DNS handled by a reverse proxy or load balancer.
 - `ANTHROPIC_PROXY_CLIENT_KEY` set for shared access.
-- Provider credentials injected by the service manager, Compose, or orchestrator.
+- Provider credentials injected by the service manager, Compose, or orchestrator when your upstream requires them.
 - `/health`, `/metrics`, and `/` left public at the application layer.
 
 The proxy does not include IP restriction, built-in request throttling, or browser-facing policy. Put network policy, rate limits, and browser-facing behavior in your reverse proxy or platform if you need them.
@@ -16,12 +16,13 @@ The proxy does not include IP restriction, built-in request throttling, or brows
 ## Binary
 
 ```bash
-ANTHROPIC_PROXY_UPSTREAM_API_KEY=replace-with-your-key \
 ANTHROPIC_PROXY_DEFAULT_MODEL=your-upstream-model \
 ANTHROPIC_PROXY_CLIENT_KEY=shared-client-key \
 ANTHROPIC_PROXY_LISTEN_ADDR=:8787 \
 ./anthropic-proxy serve
 ```
+
+Add `ANTHROPIC_PROXY_UPSTREAM_API_KEY=replace-with-your-key` for providers that require upstream authentication.
 
 For systemd or another process manager, set the same environment variables in the unit and use:
 

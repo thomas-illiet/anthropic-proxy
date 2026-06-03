@@ -32,3 +32,11 @@ func truncate(s string, n int) string {
 	}
 	return s[:n] + "..."
 }
+
+// setUpstreamAuthHeader sends upstream credentials only when one is configured.
+func setUpstreamAuthHeader(req *http.Request, key string) {
+	if key == "" {
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+key)
+}

@@ -89,7 +89,7 @@ func (p *Proxy) handleSync(w http.ResponseWriter, ctx context.Context, areq *ant
 		return
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Authorization", "Bearer "+p.cfg.UpstreamKey)
+	setUpstreamAuthHeader(httpReq, p.cfg.UpstreamKey)
 
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
