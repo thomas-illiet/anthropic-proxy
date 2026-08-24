@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM golang:1.26-alpine AS build
+FROM golang:1.27-alpine AS build
 
 ARG VERSION=dev
 WORKDIR /src
@@ -15,7 +15,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -o /out/anthropic-proxy \
     .
 
-FROM alpine:3.23
+FROM alpine:3.24
 
 ARG VERSION=dev
 ARG SOURCE=https://github.com/thomas-illiet/anthropic-proxy
